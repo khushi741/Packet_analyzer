@@ -1,0 +1,27 @@
+# Environment & Virtualenvs
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# C++ Build outputs & Executables
+build/
+bin/
+*.exe
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+dpi_engine
+
+# Output pcap & temporary files
+*.pcap
+*.log
+
+# IDE & OS specific
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

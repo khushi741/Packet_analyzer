@@ -21,9 +21,39 @@
 #include "packet_parser.h"
 #include "sni_extractor.h"
 #include "types.h"
+#include "ml_feature_exporter.h"
+#include "ml_classifier.h"
 
 using namespace PacketAnalyzer;
 using namespace DPI;
+
+inline AppType stringToAppType(const std::string& name) {
+    std::string name_lower = name;
+    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+    if (name_lower == "youtube") return AppType::YOUTUBE;
+    if (name_lower == "netflix") return AppType::NETFLIX;
+    if (name_lower == "zoom") return AppType::ZOOM;
+    if (name_lower == "google") return AppType::GOOGLE;
+    if (name_lower == "facebook") return AppType::FACEBOOK;
+    if (name_lower == "twitter") return AppType::TWITTER;
+    if (name_lower == "instagram") return AppType::INSTAGRAM;
+    if (name_lower == "amazon") return AppType::AMAZON;
+    if (name_lower == "microsoft") return AppType::MICROSOFT;
+    if (name_lower == "apple") return AppType::APPLE;
+    if (name_lower == "whatsapp") return AppType::WHATSAPP;
+    if (name_lower == "telegram") return AppType::TELEGRAM;
+    if (name_lower == "tiktok") return AppType::TIKTOK;
+    if (name_lower == "spotify") return AppType::SPOTIFY;
+    if (name_lower == "discord") return AppType::DISCORD;
+    if (name_lower == "github") return AppType::GITHUB;
+    if (name_lower == "cloudflare") return AppType::CLOUDFLARE;
+    if (name_lower == "http") return AppType::HTTP;
+    if (name_lower == "https") return AppType::HTTPS;
+    if (name_lower == "dns") return AppType::DNS;
+    if (name_lower == "tls") return AppType::TLS;
+    if (name_lower == "quic") return AppType::QUIC;
+    return AppType::UNKNOWN;
+}
 
 // =============================================================================
 // Thread-Safe Queue
@@ -215,6 +245,7 @@ private:
     TSQueue<Packet>* output_queue_;
     TSQueue<Packet> input_queue_;
     std::unordered_map<FiveTuple, FlowEntry, FiveTupleHash> flows_;
+    std::unordered_map<FiveTuple, FlowTracker, FiveTupleHash> trackers_;
     
     std::atomic<bool> running_{false};
     std::thread thread_;
@@ -228,13 +259,32 @@ private:
             processed_++;
             Packet& pkt = *pkt_opt;
             
+            // Bidirectional flow matching
+            FiveTuple flow_tuple = pkt.tuple;
+            auto it = flows_.find(pkt.tuple);
+            if (it == flows_.end()) {
+                auto rev_it = flows_.find(pkt.tuple.reverse());
+                if (rev_it != flows_.end()) {
+                    flow_tuple = pkt.tuple.reverse();
+                }
+            }
+            
             // Get or create flow
-            FlowEntry& flow = flows_[pkt.tuple];
+            FlowEntry& flow = flows_[flow_tuple];
             if (flow.packets == 0) {
-                flow.tuple = pkt.tuple;
+                flow.tuple = flow_tuple;
             }
             flow.packets++;
             flow.bytes += pkt.data.size();
+            
+            // Feed into FlowTracker
+            FlowTracker& tracker = trackers_[flow_tuple];
+            if (tracker.packet_sizes.empty()) {
+                tracker.tuple = flow_tuple;
+                tracker.protocol = pkt.tuple.protocol;
+            }
+            double ts_ms = pkt.ts_sec * 1000.0 + pkt.ts_usec / 1000.0;
+            tracker.addPacket(pkt.tuple.src_ip, pkt.data.size(), ts_ms);
             
             // Try to classify if not done yet
             if (!flow.classified) {
@@ -256,6 +306,35 @@ private:
                 stats_->forwarded++;
                 output_queue_->push(std::move(pkt));
             }
+        }
+        
+        // --- ML Classification on thread shutdown/draining ---
+        MLClassifier ml_classifier("127.0.0.1", 8080);
+        MLFeatureExporter::initializeCSV("data/flow_features.csv");
+        
+        for (auto& [tuple, flow] : flows_) {
+            FlowTracker& tracker = trackers_[tuple];
+            tracker.dpi_app_type = flow.app_type;
+            tracker.sni = flow.sni;
+            FlowFeatures features = tracker.getFeatures();
+            
+            bool is_dpi_known = (flow.app_type != AppType::UNKNOWN && 
+                                 flow.app_type != AppType::HTTPS && 
+                                 flow.app_type != AppType::HTTP);
+                                 
+            if (!is_dpi_known) {
+                MLPrediction pred = ml_classifier.predict(features);
+                if (pred.confidence > 0.4 && pred.prediction != "unknown") {
+                    AppType predicted_app = stringToAppType(pred.prediction);
+                    if (predicted_app != AppType::UNKNOWN) {
+                        flow.app_type = predicted_app;
+                        stats_->recordApp(flow.app_type, flow.sni);
+                    }
+                }
+            }
+            
+            // Export to CSV
+            MLFeatureExporter::exportToCSV("data/flow_features.csv", features);
         }
     }
     

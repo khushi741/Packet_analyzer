@@ -1,0 +1,23 @@
+======================================================================
+  Real-World Generalization Test
+  Model trained on: SYNTHETIC data only
+  Evaluated on: 215 REAL captured flows
+======================================================================
+
+Accuracy:           1.0000
+Weighted Precision: 1.0000
+Weighted Recall:    1.0000
+Weighted F1-Score:  1.0000
+
+               precision    recall  f1-score   support
+
+file_download     1.0000    1.0000    1.0000        44
+ social_media     1.0000    1.0000    1.0000        42
+ web_browsing     1.0000    1.0000    1.0000        61
+      youtube     1.0000    1.0000    1.0000        42
+         zoom     1.0000    1.0000    1.0000        26
+
+     accuracy                         1.0000       215
+    macro avg     1.0000    1.0000    1.0000       215
+ weighted avg     1.0000    1.0000    1.0000       215
+

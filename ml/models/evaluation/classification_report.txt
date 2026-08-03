@@ -1,0 +1,79 @@
+======================================================================
+  Classification Report — GradientBoosting
+======================================================================
+
+Dataset: ml/dataset/traffic_dataset.csv
+Total samples: 1415
+Data composition: 85% synthetic, 15% real traffic
+Train/Test split: 80% / 20%
+Split strategy: GroupShuffleSplit (session-aware)
+
+Data source breakdown:
+  synthetic: 1200 (84.8%)
+  captured: 215 (15.2%)
+
+──────────────────────────────────────────────────────────────────────
+  MODEL COMPARISON
+──────────────────────────────────────────────────────────────────────
+  Random Forest     — Train: 1.0000  Test: 0.9585  
+  Gradient Boosting — Train: 1.0000  Test: 0.9627  
+
+  Selected: GradientBoosting
+
+──────────────────────────────────────────────────────────────────────
+  TEST SET PERFORMANCE (GradientBoosting)
+──────────────────────────────────────────────────────────────────────
+
+               precision    recall  f1-score   support
+
+file_download     0.9118    0.8611    0.8857        36
+      netflix     0.8611    0.8857    0.8732        35
+ social_media     1.0000    1.0000    1.0000        29
+      unknown     1.0000    1.0000    1.0000        33
+ web_browsing     1.0000    1.0000    1.0000        36
+      youtube     0.9744    1.0000    0.9870        38
+         zoom     1.0000    1.0000    1.0000        34
+
+     accuracy                         0.9627       241
+    macro avg     0.9639    0.9638    0.9637       241
+ weighted avg     0.9626    0.9627    0.9625       241
+
+──────────────────────────────────────────────────────────────────────
+  TRAINING SET PERFORMANCE (GradientBoosting) — for overfitting check
+──────────────────────────────────────────────────────────────────────
+
+               precision    recall  f1-score   support
+
+file_download     1.0000    1.0000    1.0000       168
+      netflix     1.0000    1.0000    1.0000       144
+ social_media     1.0000    1.0000    1.0000       181
+      unknown     1.0000    1.0000    1.0000       136
+ web_browsing     1.0000    1.0000    1.0000       194
+      youtube     1.0000    1.0000    1.0000       189
+         zoom     1.0000    1.0000    1.0000       162
+
+     accuracy                         1.0000      1174
+    macro avg     1.0000    1.0000    1.0000      1174
+ weighted avg     1.0000    1.0000    1.0000      1174
+
+──────────────────────────────────────────────────────────────────────
+  OVERFITTING ANALYSIS
+──────────────────────────────────────────────────────────────────────
+  Train accuracy: 1.0000
+  Test accuracy:  0.9627
+  Gap:            0.0373
+  ✓ No significant overfitting (gap < 5%)
+
+──────────────────────────────────────────────────────────────────────
+  DPI BASELINE COMPARISON
+──────────────────────────────────────────────────────────────────────
+  Test set: 241 flows
+  With SNI: 58 (24.1%)
+  Without SNI: 183 (75.9%)
+
+  On SNI-visible subset (58 flows):
+    DPI accuracy: 1.0000
+    ML accuracy:  0.9828
+
+  On encrypted subset (183 flows, DPI=unknown):
+    ML accuracy:  0.9563

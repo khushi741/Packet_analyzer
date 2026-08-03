@@ -1,0 +1,43 @@
+{
+  "model": "GradientBoosting",
+  "dataset_size": 1415,
+  "data_composition": "85% synthetic, 15% real traffic",
+  "train_size": 1174,
+  "test_size": 241,
+  "split_strategy": "GroupShuffleSplit",
+  "train_accuracy": 1.0,
+  "test_accuracy": 0.9627,
+  "weighted_precision": 0.9626,
+  "weighted_recall": 0.9627,
+  "weighted_f1": 0.9625,
+  "overfitting_gap": 0.0373,
+  "classes": [
+    "file_download",
+    "netflix",
+    "social_media",
+    "unknown",
+    "web_browsing",
+    "youtube",
+    "zoom"
+  ],
+  "rf_test_accuracy": 0.9585,
+  "gb_test_accuracy": 0.9627,
+  "is_synthetic_only": false,
+  "real_world_test": {
+    "test_data": "ml/dataset/captured_flows.csv",
+    "test_size": 215,
+    "accuracy": 1.0,
+    "weighted_precision": 1.0,
+    "weighted_recall": 1.0,
+    "weighted_f1": 1.0,
+    "mean_confidence": 0.9996,
+    "per_class_accuracy": {
+      "file_download": 1.0,
+      "social_media": 1.0,
+      "web_browsing": 1.0,
+      "youtube": 1.0,
+      "zoom": 1.0
+    },
+    "generalization_gap": -0.0373
+  }
+}

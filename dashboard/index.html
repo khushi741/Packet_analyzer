@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ Hybrid DPI + ML Traffic Analyzer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js for premium interactive visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-section">
+                <span class="logo-icon">🛡️</span>
+                <div>
+                    <h1>Packet_analyzer</h1>
+                    <p class="subtitle">Hybrid DPI + Machine Learning Engine</p>
+                </div>
+            </div>
+            <div class="api-status">
+                <span class="status-dot green"></span>
+                <span>ML Service: <strong>Online</strong></span>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            <!-- Left Side: Metrics and Live Testing -->
+            <section class="left-panel">
+                <!-- Metrics -->
+                <div class="card metrics-card">
+                    <h2>Live Stats Overview</h2>
+                    <div class="metrics-grid">
+                        <div class="metric-box">
+                            <span class="metric-val" id="stat-flows">1,243</span>
+                            <span class="metric-label">Total Flows</span>
+                        </div>
+                        <div class="metric-box">
+                            <span class="metric-val" id="stat-packets">12,540</span>
+                            <span class="metric-label">Total Packets</span>
+                        </div>
+                        <div class="metric-box">
+                            <span class="metric-val" id="stat-dpi">537</span>
+                            <span class="metric-label">DPI Identified</span>
+                        </div>
+                        <div class="metric-box">
+                            <span class="metric-val" id="stat-ml">661</span>
+                            <span class="metric-label">ML Classified</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Flow Classifier -->
+                <div class="card interactive-card">
+                    <h2>Run Real-Time Inference</h2>
+                    <form id="inference-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="duration">Flow Duration (ms)</label>
+                                <input type="number" id="duration" value="1200" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="packets">Total Packets</label>
+                                <input type="number" id="packets" value="42" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bytes">Total Bytes</label>
+                                <input type="number" id="bytes" value="87000" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="mean-size">Mean Packet Size</label>
+                                <input type="number" id="mean-size" value="1280" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="iat">Mean Inter-Arrival Time (ms)</label>
+                            <input type="number" id="iat" value="15" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Classify Traffic Flow</button>
+                    </form>
+                    
+                    <!-- Result Modal-like Output inside Card -->
+                    <div id="prediction-result" class="result-box hidden">
+                        <h3>Classification Result</h3>
+                        <div class="result-display">
+                            <div class="app-badge" id="predicted-app">YouTube</div>
+                            <div class="conf-bar-container">
+                                <div class="conf-bar" id="predicted-conf-bar" style="width: 94%;"></div>
+                                <span class="conf-text" id="predicted-conf-text">94% Confidence</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Side: Visual Analytics -->
+            <section class="right-panel">
+                <div class="card chart-card">
+                    <h2>Traffic Classification Split</h2>
+                    <div class="chart-container">
+                        <canvas id="trafficChart"></canvas>
+                    </div>
+                </div>
+                <div class="card list-card">
+                    <h2>Active Labeled Flow History</h2>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Method</th>
+                                    <th>Application</th>
+                                    <th>Duration</th>
+                                    <th>Bytes</th>
+                                    <th>Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <tr>
+                                    <td><span class="badge badge-dpi">DPI</span></td>
+                                    <td><strong>YouTube</strong></td>
+                                    <td>15.2s</td>
+                                    <td>1.2 MB</td>
+                                    <td>100%</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-ml">ML</span></td>
+                                    <td><strong>Netflix</strong></td>
+                                    <td>24.8s</td>
+                                    <td>8.4 MB</td>
+                                    <td>94.2%</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-ml">ML</span></td>
+                                    <td><strong>Zoom</strong></td>
+                                    <td>45.0s</td>
+                                    <td>3.1 MB</td>
+                                    <td>89.5%</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-dpi">DPI</span></td>
+                                    <td><strong>Google</strong></td>
+                                    <td>2.1s</td>
+                                    <td>240 KB</td>
+                                    <td>100%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

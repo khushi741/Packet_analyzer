@@ -11,6 +11,8 @@
 #include "packet_parser.h"
 #include "sni_extractor.h"
 #include "types.h"
+#include "ml_feature_exporter.h"
+#include "ml_classifier.h"
 
 using namespace PacketAnalyzer;
 using namespace DPI;
@@ -24,6 +26,35 @@ struct Flow {
     uint64_t bytes = 0;
     bool blocked = false;
 };
+
+// Map string to AppType
+AppType stringToAppType(const std::string& name) {
+    std::string name_lower = name;
+    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+    if (name_lower == "youtube") return AppType::YOUTUBE;
+    if (name_lower == "netflix") return AppType::NETFLIX;
+    if (name_lower == "zoom") return AppType::ZOOM;
+    if (name_lower == "google") return AppType::GOOGLE;
+    if (name_lower == "facebook") return AppType::FACEBOOK;
+    if (name_lower == "twitter") return AppType::TWITTER;
+    if (name_lower == "instagram") return AppType::INSTAGRAM;
+    if (name_lower == "amazon") return AppType::AMAZON;
+    if (name_lower == "microsoft") return AppType::MICROSOFT;
+    if (name_lower == "apple") return AppType::APPLE;
+    if (name_lower == "whatsapp") return AppType::WHATSAPP;
+    if (name_lower == "telegram") return AppType::TELEGRAM;
+    if (name_lower == "tiktok") return AppType::TIKTOK;
+    if (name_lower == "spotify") return AppType::SPOTIFY;
+    if (name_lower == "discord") return AppType::DISCORD;
+    if (name_lower == "github") return AppType::GITHUB;
+    if (name_lower == "cloudflare") return AppType::CLOUDFLARE;
+    if (name_lower == "http") return AppType::HTTP;
+    if (name_lower == "https") return AppType::HTTPS;
+    if (name_lower == "dns") return AppType::DNS;
+    if (name_lower == "tls") return AppType::TLS;
+    if (name_lower == "quic") return AppType::QUIC;
+    return AppType::UNKNOWN;
+}
 
 // Blocking rules
 class BlockingRules {
@@ -137,14 +168,14 @@ int main(int argc, char* argv[]) {
     const auto& header = reader.getGlobalHeader();
     output.write(reinterpret_cast<const char*>(&header), sizeof(header));
     
-    // Flow table
+    // Flow tables
     std::unordered_map<FiveTuple, Flow, FiveTupleHash> flows;
+    std::unordered_map<FiveTuple, FlowTracker, FiveTupleHash> flow_trackers;
     
     // Statistics
     uint64_t total_packets = 0;
     uint64_t forwarded = 0;
     uint64_t dropped = 0;
-    std::unordered_map<AppType, uint64_t> app_stats;
     
     RawPacket raw;
     ParsedPacket parsed;
@@ -175,13 +206,32 @@ int main(int argc, char* argv[]) {
         tuple.dst_port = parsed.dest_port;
         tuple.protocol = parsed.protocol;
         
+        // Bidirectional flow matching
+        FiveTuple flow_tuple = tuple;
+        auto it = flows.find(tuple);
+        if (it == flows.end()) {
+            auto rev_it = flows.find(tuple.reverse());
+            if (rev_it != flows.end()) {
+                flow_tuple = tuple.reverse();
+            }
+        }
+        
         // Get or create flow
-        Flow& flow = flows[tuple];
+        Flow& flow = flows[flow_tuple];
         if (flow.packets == 0) {
-            flow.tuple = tuple;
+            flow.tuple = flow_tuple;
         }
         flow.packets++;
         flow.bytes += raw.data.size();
+        
+        // Feed into FlowTracker
+        FlowTracker& tracker = flow_trackers[flow_tuple];
+        if (tracker.packet_sizes.empty()) {
+            tracker.tuple = flow_tuple;
+            tracker.protocol = parsed.protocol;
+        }
+        double ts_ms = parsed.timestamp_sec * 1000.0 + parsed.timestamp_usec / 1000.0;
+        tracker.addPacket(tuple.src_ip, raw.data.size(), ts_ms);
         
         // Try SNI extraction - even for flows already marked as generic HTTPS
         if ((flow.app_type == AppType::UNKNOWN || flow.app_type == AppType::HTTPS) && 
@@ -254,9 +304,6 @@ int main(int argc, char* argv[]) {
             }
         }
         
-        // Update app stats
-        app_stats[flow.app_type]++;
-        
         // Forward or drop
         if (flow.blocked) {
             dropped++;
@@ -276,50 +323,88 @@ int main(int argc, char* argv[]) {
     reader.close();
     output.close();
     
-    // Print report
-    std::cout << "\n";
-    std::cout << "╔══════════════════════════════════════════════════════════════╗\n";
-    std::cout << "║                      PROCESSING REPORT                       ║\n";
-    std::cout << "╠══════════════════════════════════════════════════════════════╣\n";
-    std::cout << "║ Total Packets:      " << std::setw(10) << total_packets << "                             ║\n";
-    std::cout << "║ Forwarded:          " << std::setw(10) << forwarded << "                             ║\n";
-    std::cout << "║ Dropped:            " << std::setw(10) << dropped << "                             ║\n";
-    std::cout << "║ Active Flows:       " << std::setw(10) << flows.size() << "                             ║\n";
-    std::cout << "╠══════════════════════════════════════════════════════════════╣\n";
-    std::cout << "║                    APPLICATION BREAKDOWN                     ║\n";
-    std::cout << "╠══════════════════════════════════════════════════════════════╣\n";
+    // --- Hybrid DPI + ML Classification Stage ---
+    std::cout << "[ML] Starting ML classification stage for unrecognized flows...\n";
+    MLFeatureExporter::initializeCSV("data/flow_features.csv");
+    MLClassifier ml_classifier("127.0.0.1", 8080);
     
-    // Sort by count
-    std::vector<std::pair<AppType, uint64_t>> sorted_apps(app_stats.begin(), app_stats.end());
-    std::sort(sorted_apps.begin(), sorted_apps.end(),
-              [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::unordered_map<AppType, uint64_t> dpi_app_stats;
+    std::unordered_map<AppType, uint64_t> ml_app_stats;
+    uint64_t dpi_identified = 0;
+    uint64_t ml_identified = 0;
+    uint64_t unknown_count = 0;
     
-    for (const auto& [app, count] : sorted_apps) {
-        double pct = 100.0 * count / total_packets;
-        int bar_len = static_cast<int>(pct / 5);
-        std::string bar(bar_len, '#');
+    for (auto& [tuple, flow] : flows) {
+        FlowTracker& tracker = flow_trackers[tuple];
+        tracker.dpi_app_type = flow.app_type;
+        tracker.sni = flow.sni;
         
-        std::cout << "║ " << std::setw(15) << std::left << appTypeToString(app)
-                  << std::setw(8) << std::right << count
-                  << " " << std::setw(5) << std::fixed << std::setprecision(1) << pct << "% "
-                  << std::setw(20) << std::left << bar << "  ║\n";
+        FlowFeatures features = tracker.getFeatures();
+        
+        // We consider it identified by DPI if it's classified as a specific app (not generic HTTPS/HTTP/UNKNOWN)
+        bool is_dpi_known = (flow.app_type != AppType::UNKNOWN && 
+                             flow.app_type != AppType::HTTPS && 
+                             flow.app_type != AppType::HTTP);
+                             
+        if (is_dpi_known) {
+            dpi_app_stats[flow.app_type]++;
+            dpi_identified++;
+        } else {
+            // Invoke ML prediction
+            MLPrediction pred = ml_classifier.predict(features);
+            if (pred.confidence > 0.4 && pred.prediction != "unknown") {
+                AppType predicted_app = stringToAppType(pred.prediction);
+                if (predicted_app != AppType::UNKNOWN) {
+                    flow.app_type = predicted_app;
+                    ml_app_stats[predicted_app]++;
+                    ml_identified++;
+                } else {
+                    unknown_count++;
+                }
+            } else {
+                unknown_count++;
+            }
+        }
+        
+        // Export to CSV
+        MLFeatureExporter::exportToCSV("data/flow_features.csv", features);
     }
     
-    std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
+    // Print report matching design layout
+    std::cout << "\n";
+    std::cout << "========== HYBRID DPI + ML REPORT ==========\n\n";
+    std::cout << "Total Packets: " << total_packets << "\n";
+    std::cout << "Total Flows:   " << flows.size() << "\n\n";
     
-    // List unique SNIs
-    std::cout << "\n[Detected Applications/Domains]\n";
-    std::unordered_map<std::string, AppType> unique_snis;
-    for (const auto& [tuple, flow] : flows) {
-        if (!flow.sni.empty()) {
-            unique_snis[flow.sni] = flow.app_type;
+    std::cout << "DPI Identified:\n";
+    if (dpi_identified == 0) {
+        std::cout << "  (None)\n";
+    } else {
+        for (const auto& [app, count] : dpi_app_stats) {
+            std::cout << "  " << std::setw(15) << std::left << appTypeToString(app) << ": " << count << "\n";
         }
     }
-    for (const auto& [sni, app] : unique_snis) {
-        std::cout << "  - " << sni << " -> " << appTypeToString(app) << "\n";
+    
+    std::cout << "\nML Identified:\n";
+    if (ml_identified == 0) {
+        std::cout << "  (None - is ML service running?)\n";
+    } else {
+        for (const auto& [app, count] : ml_app_stats) {
+            std::cout << "  " << std::setw(15) << std::left << appTypeToString(app) << ": " << count << "\n";
+        }
     }
+    
+    std::cout << "\nUnknown:            " << unknown_count << "\n\n";
+    
+    std::cout << "Top Features Used by ML:\n";
+    std::cout << "  1. mean_packet_size\n";
+    std::cout << "  2. bytes_per_second\n";
+    std::cout << "  3. flow_duration_ms\n";
+    std::cout << "  4. std_inter_arrival_time_ms\n";
+    std::cout << "============================================\n";
     
     std::cout << "\nOutput written to: " << output_file << "\n";
     
     return 0;
 }
+
