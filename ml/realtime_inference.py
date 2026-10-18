@@ -1,8 +1,7 @@
 import os
-import sys
 import joblib
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -210,4 +209,4 @@ if __name__ == "__main__":
             port += 1
 
     print(f"Starting server on http://localhost:{port} (0.0.0.0:{port})...")
-    uvicorn.run("ml.realtime_inference:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port)
