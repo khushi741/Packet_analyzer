@@ -192,8 +192,22 @@ if os.path.exists(DASHBOARD_DIR):
 
 if __name__ == "__main__":
     import uvicorn
-    # Support Hugging Face Spaces (default 7860) or standard Render/Docker ($PORT / 8000)
+    import socket
+
+    def is_port_in_use(p: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("127.0.0.1", p)) == 0
+
     default_port = 7860 if os.environ.get("SPACE_ID") else 8000
-    port = int(os.environ.get("PORT", default_port))
-    print(f"Starting server on 0.0.0.0:{port}...")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    env_port = os.environ.get("PORT")
+
+    if env_port:
+        port = int(env_port)
+    else:
+        port = default_port
+        while is_port_in_use(port) and port < default_port + 20:
+            print(f"Port {port} is currently in use, trying port {port + 1}...")
+            port += 1
+
+    print(f"Starting server on http://localhost:{port} (0.0.0.0:{port})...")
+    uvicorn.run("ml.realtime_inference:app", host="0.0.0.0", port=port, reload=False)
