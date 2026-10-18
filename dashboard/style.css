@@ -797,6 +797,13 @@ tbody tr:hover {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.2rem;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.card-title-row h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0;
 }
 
 .frame-table-container {

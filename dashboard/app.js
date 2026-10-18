@@ -8,6 +8,7 @@ let dpiMlChartInstance = null;
 let throughputChartInstance = null;
 let featureChartInstance = null;
 let fullDatasetCache = [];
+let currentActiveFlow = null;
 
 // Flow Scenario Presets for Calculator
 const presets = {
@@ -322,6 +323,7 @@ window.filterDatasetTable = filterDatasetTable;
 // 5. FLOW CALCULATOR PRESETS & INFERENCE
 // ==============================================================================
 function applyPreset(type) {
+    currentActiveFlow = null;
     const p = presets[type];
     if (!p) return;
     const durInput = document.getElementById("duration");
@@ -424,10 +426,20 @@ async function analyzePacketCapture(fileObj, sampleName = null) {
         if (meanInput && flow.mean_packet_size !== undefined) meanInput.value = flow.mean_packet_size;
         if (iatInput && flow.mean_inter_arrival_time_ms !== undefined) iatInput.value = flow.mean_inter_arrival_time_ms;
 
+        const fileExt = fileName.toLowerCase().endsWith(".csv") ? "CSV" : "PCAP";
         if (sourceBadge) {
-            sourceBadge.textContent = `📁 PCAP: ${fileName}`;
+            sourceBadge.textContent = `📁 ${fileExt}: ${fileName}`;
             sourceBadge.className = "badge badge-info";
         }
+
+        currentActiveFlow = {
+            filename: fileName,
+            fileExt: fileExt,
+            detected_sni: data.detected_sni || "",
+            dpi_app_type: data.dpi_app_type || "UNKNOWN",
+            hybrid_app: data.hybrid_app,
+            method: data.method
+        };
 
         // 3. Render Wireshark-like Frame Inspector Timeline
         if (framePreviewBody && Array.isArray(data.packet_preview)) {
@@ -575,6 +587,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const pps = packets / durationSec;
             const bps = bytes / durationSec;
 
+            const activeSni = currentActiveFlow ? currentActiveFlow.detected_sni : "";
+            const activeDpi = currentActiveFlow ? currentActiveFlow.dpi_app_type : "UNKNOWN";
+
             const payload = {
                 flow_duration_ms: duration,
                 total_packets: packets,
@@ -591,9 +606,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 std_inter_arrival_time_ms: Math.round(iat * 0.3),
                 packets_per_second: pps,
                 bytes_per_second: bps,
-                tcp_udp_flag: 6,
-                detected_sni: "",
-                dpi_app_type: "UNKNOWN"
+                tcp_udp_flag: activeDpi === "ZOOM" ? 17 : 6,
+                detected_sni: activeSni,
+                dpi_app_type: activeDpi
             };
 
             if (classifyBtn) {
@@ -611,12 +626,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!res.ok) throw new Error("Inference error: " + res.status);
                 const data = await res.json();
 
-                const appName = String(data.prediction).replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+                let appName = String(data.prediction).replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+                let methodTag = "ML";
                 const confPct = Math.round(data.confidence * 100);
+
+                if (activeDpi && activeDpi !== "UNKNOWN" && activeDpi !== "HTTPS") {
+                    appName = activeDpi.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+                    methodTag = "DPI";
+                }
 
                 if (predictedApp) predictedApp.textContent = appName;
                 if (predictedConfBar) predictedConfBar.style.width = `${confPct}%`;
-                if (predictedConfText) predictedConfText.textContent = `${confPct}% Confidence`;
+                if (predictedConfText) {
+                    if (methodTag === "DPI") {
+                        predictedConfText.textContent = `DPI Verified Signature (ML Behavioral: ${confPct}%)`;
+                    } else {
+                        predictedConfText.textContent = `${confPct}% Confidence`;
+                    }
+                }
 
                 if (anomalyBadge) {
                     if (data.is_anomaly) {
@@ -632,9 +659,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if (historyBody) {
                     const newRow = document.createElement("tr");
+                    const methodBadge = methodTag === "DPI" 
+                        ? '<span class="badge badge-dpi">DPI</span>' 
+                        : '<span class="badge badge-ml">ML</span>';
+                    const fileSubtitle = currentActiveFlow ? `<span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${currentActiveFlow.filename}</span>` : '';
                     newRow.innerHTML = `
-                        <td><span class="badge badge-ml">ML</span></td>
-                        <td><strong>${appName}</strong></td>
+                        <td>${methodBadge}</td>
+                        <td><strong>${appName}</strong>${fileSubtitle}</td>
                         <td>${(duration / 1000).toFixed(1)}s</td>
                         <td>${(bytes / 1024).toFixed(1)} KB</td>
                         <td>${confPct}%</td>
