@@ -335,8 +335,189 @@ function applyPreset(type) {
     if (bytesInput) bytesInput.value = p.bytes;
     if (meanInput) meanInput.value = p.mean;
     if (iatInput) iatInput.value = p.iat;
+
+    const sourceBadge = document.getElementById("flow-source-badge");
+    if (sourceBadge) {
+        sourceBadge.textContent = "Preset: " + type.toUpperCase();
+        sourceBadge.className = "badge badge-normal";
+    }
 }
 window.applyPreset = applyPreset;
+
+// ==============================================================================
+// 5B. REAL PACKET CAPTURE & PCAP FILE DISSECTION
+// ==============================================================================
+async function analyzePacketCapture(fileObj, sampleName = null) {
+    const spinner = document.getElementById("upload-spinner");
+    const promptEl = document.getElementById("dropzone-prompt");
+    const metaBanner = document.getElementById("dissected-file-meta");
+    const resultBox = document.getElementById("prediction-result");
+    const sourceBadge = document.getElementById("flow-source-badge");
+    const framePreviewBody = document.getElementById("packet-preview-body");
+    const framesBadge = document.getElementById("frames-count-badge");
+    const historyBody = document.getElementById("history-table-body");
+
+    // UI Loading state
+    if (spinner) spinner.classList.remove("hidden");
+    if (promptEl) promptEl.classList.add("hidden");
+
+    try {
+        let res;
+        if (sampleName) {
+            res = await fetch(`/api/analyze-file?sample=${encodeURIComponent(sampleName)}`, {
+                method: "POST"
+            });
+        } else if (fileObj) {
+            const formData = new FormData();
+            formData.append("file", fileObj);
+            res = await fetch("/api/analyze-file", {
+                method: "POST",
+                body: formData
+            });
+        } else {
+            throw new Error("No file or sample specified.");
+        }
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.detail || `Server returned HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // 1. Update Dissected File Meta Banner
+        const fileName = data.filename || (sampleName ? sampleName : (fileObj ? fileObj.name : "Capture"));
+        const metaFilename = document.getElementById("meta-filename");
+        const metaPackets = document.getElementById("meta-packets");
+        const metaBytes = document.getElementById("meta-bytes");
+        const metaDuration = document.getElementById("meta-duration");
+        const metaSni = document.getElementById("meta-sni");
+        const metaMethod = document.getElementById("meta-method");
+
+        if (metaFilename) metaFilename.textContent = fileName;
+        if (metaPackets) metaPackets.textContent = `${Number(data.total_packets).toLocaleString()} pkts`;
+        if (metaBytes) {
+            const kb = (data.total_bytes / 1024).toFixed(1);
+            metaBytes.textContent = `${kb} KB (${Number(data.total_bytes).toLocaleString()} B)`;
+        }
+        if (metaDuration) {
+            metaDuration.textContent = `${(data.duration_ms / 1000).toFixed(2)}s (${data.duration_ms} ms)`;
+        }
+        if (metaSni) {
+            metaSni.textContent = data.detected_sni || "None (Behavioral Flow)";
+        }
+        if (metaMethod) metaMethod.textContent = data.method || "Hybrid DPI + ML";
+
+        if (metaBanner) metaBanner.classList.remove("hidden");
+
+        // 2. Synchronize Flow Parameters Form with extracted features
+        const flow = data.flow_features || {};
+        const durInput = document.getElementById("duration");
+        const pktInput = document.getElementById("packets");
+        const bytesInput = document.getElementById("bytes");
+        const meanInput = document.getElementById("mean-size");
+        const iatInput = document.getElementById("iat");
+
+        if (durInput && flow.flow_duration_ms !== undefined) durInput.value = flow.flow_duration_ms;
+        if (pktInput && flow.total_packets !== undefined) pktInput.value = flow.total_packets;
+        if (bytesInput && flow.total_bytes !== undefined) bytesInput.value = flow.total_bytes;
+        if (meanInput && flow.mean_packet_size !== undefined) meanInput.value = flow.mean_packet_size;
+        if (iatInput && flow.mean_inter_arrival_time_ms !== undefined) iatInput.value = flow.mean_inter_arrival_time_ms;
+
+        if (sourceBadge) {
+            sourceBadge.textContent = `📁 PCAP: ${fileName}`;
+            sourceBadge.className = "badge badge-info";
+        }
+
+        // 3. Render Wireshark-like Frame Inspector Timeline
+        if (framePreviewBody && Array.isArray(data.packet_preview)) {
+            framePreviewBody.innerHTML = "";
+            data.packet_preview.forEach(frame => {
+                const tr = document.createElement("tr");
+                const protoColor = frame.proto === "TLS" ? "badge-dpi" : (frame.proto === "TCP" ? "badge-info" : "badge-ml");
+                tr.innerHTML = `
+                    <td style="font-weight: 600; color: #fff;">${frame.num}</td>
+                    <td style="color: var(--text-muted);">${frame.time}</td>
+                    <td><span class="badge ${protoColor}">${frame.proto}</span></td>
+                    <td>${frame.len} B</td>
+                    <td style="color: #d1dcff; word-break: break-all;">${frame.info}</td>
+                `;
+                framePreviewBody.appendChild(tr);
+            });
+        }
+        if (framesBadge) {
+            framesBadge.textContent = `${data.total_packets} Frames Dissected`;
+        }
+
+        // 4. Update Real-Time Prediction Box
+        const appName = data.hybrid_app || String(data.inference?.prediction || "Unknown").replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+        const confPct = Math.round((data.inference?.confidence || 0.95) * 100);
+        const isAnomaly = !!data.inference?.is_anomaly;
+
+        const predictedApp = document.getElementById("predicted-app");
+        const predictedConfBar = document.getElementById("predicted-conf-bar");
+        const predictedConfText = document.getElementById("predicted-conf-text");
+        const anomalyBadge = document.getElementById("anomaly-badge");
+
+        if (predictedApp) predictedApp.textContent = appName;
+        if (predictedConfBar) predictedConfBar.style.width = `${confPct}%`;
+        if (predictedConfText) predictedConfText.textContent = `${confPct}% Confidence (${data.method || 'Hybrid'})`;
+
+        if (anomalyBadge) {
+            if (isAnomaly) {
+                anomalyBadge.className = "badge badge-anomaly";
+                anomalyBadge.textContent = "⚠️ Anomaly Detected";
+            } else {
+                anomalyBadge.className = "badge badge-normal";
+                anomalyBadge.textContent = "✓ Normal Pattern";
+            }
+        }
+
+        if (resultBox) resultBox.classList.remove("hidden");
+
+        // 5. Append to Live Classification History
+        if (historyBody) {
+            const newRow = document.createElement("tr");
+            const isDpi = (data.method || "").toLowerCase().includes("dpi");
+            const methodBadge = isDpi ? '<span class="badge badge-dpi">DPI</span>' : '<span class="badge badge-info">PCAP</span>';
+            const durFormatted = `${(data.duration_ms / 1000).toFixed(1)}s`;
+            const kbFormatted = `${(data.total_bytes / 1024).toFixed(1)} KB`;
+
+            newRow.innerHTML = `
+                <td>${methodBadge}</td>
+                <td><strong>${appName}</strong> <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">${fileName}</span></td>
+                <td>${durFormatted}</td>
+                <td>${kbFormatted}</td>
+                <td>${confPct}%</td>
+                <td>${isAnomaly ? '<span class="badge badge-anomaly">Anomaly</span>' : '<span class="badge badge-normal">Normal</span>'}</td>
+            `;
+            historyBody.insertBefore(newRow, historyBody.firstChild);
+        }
+
+    } catch (err) {
+        console.error("Packet capture analysis failed:", err);
+        alert(`Packet Analysis Error: ${err.message}`);
+    } finally {
+        if (spinner) spinner.classList.add("hidden");
+        if (promptEl) promptEl.classList.remove("hidden");
+    }
+}
+window.analyzePacketCapture = analyzePacketCapture;
+
+function handleFileInput(e) {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+        analyzePacketCapture(file, null);
+    }
+    e.target.value = "";
+}
+window.handleFileInput = handleFileInput;
+
+function loadSamplePcap(sampleName) {
+    analyzePacketCapture(null, sampleName);
+}
+window.loadSamplePcap = loadSamplePcap;
+
 
 // ==============================================================================
 // 6. HEALTH CHECK
@@ -472,6 +653,34 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
+    }
+
+    // 2B. Setup Drag and Drop on PCAP Dropzone
+    const dropzone = document.getElementById("pcap-dropzone");
+    if (dropzone) {
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.remove('dragover');
+            }, false);
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt && dt.files;
+            if (files && files.length > 0) {
+                analyzePacketCapture(files[0], null);
+            }
+        }, false);
     }
 
     // 3. Determine initial view from hash or pathname

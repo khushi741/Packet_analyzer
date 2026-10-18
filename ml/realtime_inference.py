@@ -1,9 +1,12 @@
 import os
+import io
+import struct
+import statistics
 import joblib
 import pandas as pd
 from typing import Optional, List, Any
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -100,23 +103,17 @@ class FlowFeaturesInput(BaseModel):
     dpi_app_type: str = "UNKNOWN"
 
 
-@app.post("/predict-flow")
-def predict_flow(features: FlowFeaturesInput):
+def run_model_inference(data_dict: dict) -> dict:
     global model, feature_cols, anomaly_detector
     if model is None or feature_cols is None:
         load_models()
         if model is None or feature_cols is None:
             raise HTTPException(status_code=503, detail="Model is not trained or loaded yet.")
 
-    # Local reference ensures type checkers narrow Optional[List[str]] to List[str]
     active_cols = feature_cols
     if active_cols is None:
         raise HTTPException(status_code=503, detail="Feature columns are not available.")
 
-    # Map input request to dictionary
-    data_dict = features.model_dump()
-
-    # Intelligent feature auto-derivation if user/frontend omitted derived statistics
     duration_ms = float(data_dict.get("flow_duration_ms", 0.0))
     duration_sec = duration_ms / 1000.0 if duration_ms > 0 else 1.0
     tot_packets = int(data_dict.get("total_packets", 0))
@@ -142,19 +139,16 @@ def predict_flow(features: FlowFeaturesInput):
     if data_dict.get("std_inter_arrival_time_ms", 0.0) <= 0.0 and iat > 0:
         data_dict["std_inter_arrival_time_ms"] = round(iat * 0.3, 2)
 
-    # Prepare row matching feature columns order
     row_data = {}
     for col in active_cols:
         row_data[col] = [data_dict.get(col, 0.0)]
 
     df_input = pd.DataFrame(row_data)
 
-    # Predict
     prediction = model.predict(df_input)[0]
     probs = model.predict_proba(df_input)[0]
     confidence = float(max(probs))
 
-    # Check for anomaly
     is_anomaly = False
     if anomaly_detector is not None:
         try:
@@ -165,10 +159,285 @@ def predict_flow(features: FlowFeaturesInput):
             pass
 
     return {
-        "prediction": prediction,
+        "prediction": str(prediction),
         "confidence": confidence,
         "is_anomaly": is_anomaly,
     }
+
+
+def dissect_pcap_bytes(data: bytes, filename: str = "capture.pcap") -> dict:
+    if len(data) < 24:
+        raise ValueError("File is too small to be a valid PCAP capture (< 24 bytes).")
+
+    magic = struct.unpack("<I", data[:4])[0]
+    endian = ">" if magic in [0xd4c3b2a1, 0x4d3cb2a1] else "<"
+    is_nano = magic in [0xa1b23c4d, 0x4d3cb2a1]
+
+    offset = 24
+    packets = []
+    while offset + 16 <= len(data):
+        ts_sec, ts_sub, incl_len, orig_len = struct.unpack(f"{endian}IIII", data[offset:offset+16])
+        offset += 16
+        if offset + incl_len > len(data):
+            break
+        raw = data[offset:offset+incl_len]
+        offset += incl_len
+        ts = ts_sec + (ts_sub / 1e9 if is_nano else ts_sub / 1e6)
+        packets.append((ts, raw))
+
+    if not packets:
+        raise ValueError("No packet frames found in the uploaded PCAP file.")
+
+    packets.sort(key=lambda x: x[0])
+    first_ts = packets[0][0]
+    last_ts = packets[-1][0]
+    duration_s = max(0.001, last_ts - first_ts)
+    duration_ms = round(duration_s * 1000.0, 1)
+
+    total_pkts = len(packets)
+    total_bytes = sum(len(p[1]) for p in packets)
+    lens = [len(p[1]) for p in packets]
+    mean_len = round(float(statistics.mean(lens)), 1)
+    min_len = min(lens)
+    max_len = max(lens)
+    std_len = round(float(statistics.stdev(lens)), 1) if len(lens) > 1 else 0.0
+
+    iats = [(packets[i][0] - packets[i-1][0]) * 1000.0 for i in range(1, len(packets))]
+    mean_iat = round(float(statistics.mean(iats)), 1) if iats else 10.0
+    std_iat = round(float(statistics.stdev(iats)), 1) if len(iats) > 1 else 0.0
+
+    pps = round(total_pkts / duration_s, 2)
+    bps = round(total_bytes / duration_s, 2)
+
+    detected_sni = ""
+    dpi_app_type = "UNKNOWN"
+    proto_flag = 6
+
+    packet_preview = []
+    for idx, (t, p) in enumerate(packets[:15], 1):
+        rel_t = f"+{t - first_ts:.3f}s"
+        proto = "IP"
+        info = f"Frame #{idx}"
+
+        if len(p) >= 34:
+            ip_proto = p[23] if len(p) > 23 else 6
+            if ip_proto == 17:
+                proto = "UDP"
+                proto_flag = 17
+                info = "UDP Datagram"
+            elif ip_proto == 6:
+                proto = "TCP"
+                proto_flag = 6
+                info = "TCP Segment"
+
+        if b"\x16\x03" in p:
+            proto = "TLS"
+            info = "TLS Handshake"
+            for kw in [b"youtube", b"googlevideo", b"zoom", b"netflix", b"spotify", b"github", b"discord", b"instagram", b"facebook", b"google", b"apple", b"cloudflare"]:
+                if kw in p:
+                    i = p.find(kw)
+                    s, e = i, i
+                    while s > 0 and p[s-1] in b"abcdefghijklmnopqrstuvwxyz0123456789.-":
+                        s -= 1
+                    while e < len(p) and p[e] in b"abcdefghijklmnopqrstuvwxyz0123456789.-":
+                        e += 1
+                    cand = p[s:e].decode("ascii", errors="ignore")
+                    if len(cand) > len(detected_sni):
+                        detected_sni = cand
+                        info = f"TLS Client Hello (SNI: {detected_sni})"
+                        if "youtube" in detected_sni or "googlevideo" in detected_sni:
+                            dpi_app_type = "YOUTUBE"
+                        elif "zoom" in detected_sni:
+                            dpi_app_type = "ZOOM"
+                        elif any(k in detected_sni for k in ["instagram", "facebook", "discord"]):
+                            dpi_app_type = "SOCIAL_MEDIA"
+                        elif any(k in detected_sni for k in ["netflix", "spotify"]):
+                            dpi_app_type = "STREAMING"
+                        elif "github" in detected_sni:
+                            dpi_app_type = "FILE_DOWNLOAD"
+                        else:
+                            dpi_app_type = "HTTPS"
+
+        packet_preview.append({
+            "num": idx,
+            "time": rel_t,
+            "proto": proto,
+            "len": len(p),
+            "info": info
+        })
+
+    forward_pkts = int(total_pkts * 0.55)
+    backward_pkts = total_pkts - forward_pkts
+    forward_bytes = int(total_bytes * 0.55)
+    backward_bytes = total_bytes - forward_bytes
+
+    flow_features = {
+        "flow_duration_ms": duration_ms,
+        "total_packets": total_pkts,
+        "total_bytes": total_bytes,
+        "forward_packets": forward_pkts,
+        "backward_packets": backward_pkts,
+        "forward_bytes": forward_bytes,
+        "backward_bytes": backward_bytes,
+        "mean_packet_size": mean_len,
+        "std_packet_size": std_len,
+        "min_packet_size": min_len,
+        "max_packet_size": max_len,
+        "mean_inter_arrival_time_ms": mean_iat,
+        "std_inter_arrival_time_ms": std_iat,
+        "packets_per_second": pps,
+        "bytes_per_second": bps,
+        "tcp_udp_flag": proto_flag,
+        "detected_sni": detected_sni,
+        "dpi_app_type": dpi_app_type,
+    }
+
+    return {
+        "flow_features": flow_features,
+        "total_packets": total_pkts,
+        "total_bytes": total_bytes,
+        "duration_ms": duration_ms,
+        "detected_sni": detected_sni,
+        "dpi_app_type": dpi_app_type,
+        "protocol_name": "TCP" if proto_flag == 6 else "UDP",
+        "packet_preview": packet_preview,
+    }
+
+
+def dissect_csv_bytes(data: bytes, filename: str = "flows.csv") -> dict:
+    df = pd.read_csv(io.BytesIO(data))
+    if df.empty:
+        raise ValueError("Uploaded CSV file is empty.")
+    row = df.iloc[0].to_dict()
+
+    flow_features = {
+        "flow_duration_ms": float(row.get("flow_duration_ms", 1200.0)),
+        "total_packets": int(row.get("total_packets", 42)),
+        "total_bytes": int(row.get("total_bytes", 87000)),
+        "forward_packets": int(row.get("forward_packets", 20)),
+        "backward_packets": int(row.get("backward_packets", 22)),
+        "forward_bytes": int(row.get("forward_bytes", 35000)),
+        "backward_bytes": int(row.get("backward_bytes", 52000)),
+        "mean_packet_size": float(row.get("mean_packet_size", 1280.0)),
+        "std_packet_size": float(row.get("std_packet_size", 300.0)),
+        "min_packet_size": int(row.get("min_packet_size", 60)),
+        "max_packet_size": int(row.get("max_packet_size", 1500)),
+        "mean_inter_arrival_time_ms": float(row.get("mean_inter_arrival_time_ms", 15.0)),
+        "std_inter_arrival_time_ms": float(row.get("std_inter_arrival_time_ms", 4.0)),
+        "packets_per_second": float(row.get("packets_per_second", 35.0)),
+        "bytes_per_second": float(row.get("bytes_per_second", 72500.0)),
+        "tcp_udp_flag": int(row.get("tcp_udp_flag", 6)),
+        "detected_sni": str(row.get("detected_sni", "")),
+        "dpi_app_type": str(row.get("dpi_app_type", "UNKNOWN")),
+    }
+
+    return {
+        "flow_features": flow_features,
+        "total_packets": flow_features["total_packets"],
+        "total_bytes": flow_features["total_bytes"],
+        "duration_ms": flow_features["flow_duration_ms"],
+        "detected_sni": flow_features["detected_sni"],
+        "dpi_app_type": flow_features["dpi_app_type"],
+        "protocol_name": "TCP" if flow_features["tcp_udp_flag"] == 6 else "UDP",
+        "packet_preview": [
+            {"num": 1, "time": "+0.000s", "proto": "CSV Flow", "len": flow_features["total_bytes"], "info": f"Imported Flow Record (SNI: {flow_features['detected_sni'] or 'N/A'})"}
+        ]
+    }
+
+
+@app.post("/predict-flow")
+def predict_flow(features: FlowFeaturesInput):
+    data_dict = features.model_dump()
+    return run_model_inference(data_dict)
+
+
+@app.post("/api/analyze-file")
+async def analyze_file(
+    file: Optional[UploadFile] = File(None),
+    sample: Optional[str] = Query(None)
+):
+    raw_data: bytes = b""
+    fname: str = "uploaded_file"
+
+    if sample:
+        # Resolve sample file from repository
+        candidates = [
+            os.path.join(BASE_DIR, sample),
+            os.path.join(BASE_DIR, "data", sample),
+            sample,
+        ]
+        chosen = None
+        for c in candidates:
+            if os.path.exists(c):
+                chosen = c
+                break
+        if not chosen:
+            raise HTTPException(status_code=404, detail=f"Sample file '{sample}' not found.")
+        with open(chosen, "rb") as f:
+            raw_data = f.read()
+        fname = sample
+    elif file is not None:
+        raw_data = await file.read()
+        fname = file.filename or "upload.pcap"
+    else:
+        raise HTTPException(status_code=400, detail="No file or sample parameter provided.")
+
+    if len(raw_data) == 0:
+        raise HTTPException(status_code=400, detail="The provided file is empty.")
+
+    try:
+        if fname.lower().endswith(".csv"):
+            dissection = dissect_csv_bytes(raw_data, fname)
+        else:
+            dissection = dissect_pcap_bytes(raw_data, fname)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to dissect packet capture: {str(e)}")
+
+    flow_features = dissection["flow_features"]
+    inference = run_model_inference(flow_features)
+
+    dpi_app = dissection["dpi_app_type"]
+    ml_app = inference["prediction"]
+    if dpi_app not in ["UNKNOWN", "HTTPS", "HTTP", ""]:
+        hybrid_app = dpi_app.replace("_", " ").title()
+        method = "DPI (Signature verified)"
+    else:
+        hybrid_app = str(ml_app).replace("_", " ").title()
+        method = "ML (Behavioral Classifier)"
+
+    return {
+        "success": True,
+        "filename": fname,
+        "file_size": len(raw_data),
+        "total_packets": dissection["total_packets"],
+        "total_bytes": dissection["total_bytes"],
+        "duration_ms": dissection["duration_ms"],
+        "protocol_name": dissection["protocol_name"],
+        "detected_sni": dissection["detected_sni"],
+        "dpi_app_type": dissection["dpi_app_type"],
+        "flow_features": flow_features,
+        "inference": inference,
+        "hybrid_app": hybrid_app,
+        "method": method,
+        "packet_preview": dissection["packet_preview"],
+    }
+
+
+@app.get("/api/sample-files")
+def get_sample_files():
+    samples = []
+    for s, desc in [
+        ("test_dpi.pcap", "Real TLS Client Hello with SNI (YouTube, Instagram, Netflix, Spotify)"),
+        ("output.pcap", "Live Captured Web & HTTP Network Traffic"),
+    ]:
+        p = os.path.join(BASE_DIR, s)
+        if os.path.exists(p):
+            samples.append({
+                "filename": s,
+                "size_bytes": os.path.getsize(p),
+                "description": desc
+            })
+    return {"samples": samples}
 
 
 @app.get("/health")

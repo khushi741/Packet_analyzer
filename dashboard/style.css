@@ -591,7 +591,229 @@ tbody tr:hover {
     border: 1px solid rgba(0, 230, 118, 0.3);
 }
 
+.badge-info {
+    background-color: rgba(79, 172, 254, 0.15);
+    color: #4facfe;
+    border: 1px solid rgba(79, 172, 254, 0.3);
+}
+
+/* ============================================================================== */
+/* File Upload & Real PCAP Dissector Styles                                      */
+/* ============================================================================== */
+.file-upload-section {
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.file-upload-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.2rem;
+    margin-bottom: 1.2rem;
+}
+
+.section-desc {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.section-desc code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    color: var(--primary-color);
+}
+
+.sample-pcap-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.sample-label {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.sample-btn {
+    border-color: rgba(0, 242, 254, 0.35);
+    color: #d8f5ff;
+}
+
+.sample-btn:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+}
+
+/* Drag & Drop Zone */
+.dropzone {
+    border: 2px dashed rgba(79, 172, 254, 0.35);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.015);
+    padding: 2.2rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.dropzone:hover, .dropzone.dragover {
+    border-color: var(--primary-color);
+    background: rgba(0, 242, 254, 0.04);
+    box-shadow: 0 0 25px rgba(0, 242, 254, 0.15);
+    transform: translateY(-1px);
+}
+
+.dropzone-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    pointer-events: none;
+}
+
+.dropzone-icon {
+    font-size: 2.4rem;
+    filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.4));
+    animation: floatIcon 3s ease-in-out infinite;
+}
+
+@keyframes floatIcon {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+.dropzone-text {
+    font-size: 0.95rem;
+    color: var(--text-main);
+}
+
+.dropzone-text .highlight {
+    color: var(--primary-color);
+    text-decoration: underline;
+    font-weight: 600;
+}
+
+.dropzone-subtext {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+/* Upload & Dissection Spinner */
+.upload-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    font-size: 0.92rem;
+    color: var(--primary-color);
+    padding: 1rem;
+}
+
+.spinner-ring {
+    width: 22px;
+    height: 22px;
+    border: 3px solid rgba(0, 242, 254, 0.2);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spinRing 0.8s linear infinite;
+}
+
+@keyframes spinRing {
+    to { transform: rotate(360deg); }
+}
+
+/* Dissected File Meta Banner */
+.file-meta-banner {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    margin-top: 1.2rem;
+    animation: fadeIn 0.4s ease;
+}
+
+@media (max-width: 1024px) {
+    .file-meta-banner {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 576px) {
+    .file-meta-banner {
+        grid-template-columns: 1fr;
+    }
+}
+
+.meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.meta-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+}
+
+.meta-value {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.95rem;
+    color: #fff;
+    word-break: break-all;
+}
+
+.meta-sni-badge {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Layout additions for calculation view */
+.right-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.8rem;
+}
+
+.card-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.2rem;
+}
+
+.frame-table-container {
+    max-height: 250px;
+}
+
+.frame-table-container table {
+    font-family: 'Space Grotesk', monospace;
+    font-size: 0.82rem;
+}
+
+.frame-table-container th {
+    font-family: 'Outfit', sans-serif;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
 }
+

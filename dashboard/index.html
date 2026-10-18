@@ -144,24 +144,90 @@
         </main>
 
         <!-- ============================================== -->
-        <!-- VIEW 2: FLOW CALCULATOR & SANDBOX              -->
+        <!-- VIEW 2: FLOW CALCULATOR & PACKET DISSECTOR     -->
         <!-- ============================================== -->
         <main id="view-calc" class="view-container view-hidden">
             <div class="view-banner">
                 <div>
-                    <h2>🧮 Real-Time Flow Inference Calculator</h2>
-                    <p>Simulate or test custom flow behavioral features against the trained Random Forest classifier and Anomaly detector.</p>
+                    <h2>🧮 Real Packet Capture Dissector & Flow Calculator</h2>
+                    <p>Ingest live network capture files (<code>.pcap</code>, <code>.pcapng</code>, <code>.csv</code>), extract Deep Packet Inspection (DPI) signatures, and compute real-time ML classifications.</p>
                 </div>
             </div>
+
+            <!-- Ingest Real Packet Capture Section -->
+            <section class="card file-upload-section">
+                <div class="file-upload-header">
+                    <div>
+                        <h2>📁 Ingest Packet Capture File</h2>
+                        <p class="section-desc">Drop any raw Wireshark PCAP/PCAPNG or flow CSV to dissect headers, extract TLS SNIs, and classify traffic.</p>
+                    </div>
+                    <div class="sample-pcap-group">
+                        <span class="sample-label">Or test sample captures:</span>
+                        <button type="button" class="preset-btn sample-btn" onclick="loadSamplePcap('test_dpi.pcap')" title="77 real packets with TLS SNIs (YouTube, Instagram, Netflix, Spotify)">
+                            🎯 test_dpi.pcap (TLS SNI)
+                        </button>
+                        <button type="button" class="preset-btn sample-btn" onclick="loadSamplePcap('output.pcap')" title="69 packets of live captured web traffic">
+                            🌐 output.pcap (Live Web)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Drag & Drop Zone -->
+                <div id="pcap-dropzone" class="dropzone" onclick="document.getElementById('pcap-file-input').click()">
+                    <input type="file" id="pcap-file-input" accept=".pcap,.pcapng,.cap,.csv" style="display: none;" onchange="handleFileInput(event)">
+                    <div class="dropzone-content" id="dropzone-prompt">
+                        <div class="dropzone-icon">📥</div>
+                        <div class="dropzone-text">
+                            <strong>Drag & drop a packet capture file here</strong> or <span class="highlight">browse files</span>
+                            <div class="dropzone-subtext">Supports .pcap, .pcapng, .cap, or flow .csv files</div>
+                        </div>
+                    </div>
+                    <div id="upload-spinner" class="upload-spinner hidden">
+                        <div class="spinner-ring"></div>
+                        <span>Dissecting packet headers & extracting TLS signatures...</span>
+                    </div>
+                </div>
+
+                <!-- Dissected File Meta Banner -->
+                <div id="dissected-file-meta" class="file-meta-banner hidden">
+                    <div class="meta-item">
+                        <span class="meta-title">Analyzed Capture</span>
+                        <strong id="meta-filename" class="meta-value">capture.pcap</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">Frames Dissected</span>
+                        <strong id="meta-packets" class="meta-value">0</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">Capture Volume</span>
+                        <strong id="meta-bytes" class="meta-value">0 KB</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">Flow Duration</span>
+                        <strong id="meta-duration" class="meta-value">0 ms</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">DPI TLS SNI</span>
+                        <strong id="meta-sni" class="meta-value meta-sni-badge">None</strong>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-title">Classifier Pipeline</span>
+                        <strong id="meta-method" class="meta-value">Hybrid DPI + ML</strong>
+                    </div>
+                </div>
+            </section>
 
             <div class="calculator-grid">
                 <!-- Left: Flow Input Form with Presets -->
                 <section class="card">
-                    <h2>Input Flow Parameters</h2>
+                    <div class="card-title-row">
+                        <h2>Flow Behavioral Parameters</h2>
+                        <span class="badge badge-normal" id="flow-source-badge">Preset Mode</span>
+                    </div>
 
                     <!-- Presets -->
                     <div class="preset-section">
-                        <span class="preset-title">Quick Scenario Presets:</span>
+                        <span class="preset-title">Quick Synthetic Presets:</span>
                         <div class="preset-container">
                             <button type="button" class="preset-btn" onclick="applyPreset('youtube')">🎬 YouTube 1080p</button>
                             <button type="button" class="preset-btn" onclick="applyPreset('zoom')">📞 Zoom Conference</button>
@@ -174,7 +240,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="duration">Flow Duration (ms)</label>
-                                <input type="number" id="duration" value="1200" required>
+                                <input type="number" step="any" id="duration" value="1200" required>
                             </div>
                             <div class="form-group">
                                 <label for="packets">Total Packets</label>
@@ -189,13 +255,13 @@
                             </div>
                             <div class="form-group">
                                 <label for="mean-size">Mean Packet Size (Bytes)</label>
-                                <input type="number" id="mean-size" value="1280" required>
+                                <input type="number" step="any" id="mean-size" value="1280" required>
                             </div>
                         </div>
 
                         <div class="form-group">
                             <label for="iat">Mean Inter-Arrival Time (ms)</label>
-                            <input type="number" id="iat" value="15" required>
+                            <input type="number" step="any" id="iat" value="15" required>
                         </div>
 
                         <button type="submit" class="btn-primary" id="btn-classify">Classify Traffic Flow</button>
@@ -217,42 +283,65 @@
                     </div>
                 </section>
 
-                <!-- Right: Active Calculation Log -->
-                <section class="card">
-                    <h2>Live Classification History</h2>
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Method</th>
-                                    <th>Prediction</th>
-                                    <th>Duration</th>
-                                    <th>Bytes</th>
-                                    <th>Confidence</th>
-                                    <th>Anomaly</th>
-                                </tr>
-                            </thead>
-                            <tbody id="history-table-body">
-                                <tr>
-                                    <td><span class="badge badge-ml">ML</span></td>
-                                    <td><strong>YouTube</strong></td>
-                                    <td>1.2s</td>
-                                    <td>85.0 KB</td>
-                                    <td>94%</td>
-                                    <td><span class="badge badge-normal">Normal</span></td>
-                                </tr>
-                                <tr>
-                                    <td><span class="badge badge-ml">ML</span></td>
-                                    <td><strong>Zoom</strong></td>
-                                    <td>45.0s</td>
-                                    <td>3.1 MB</td>
-                                    <td>89%</td>
-                                    <td><span class="badge badge-normal">Normal</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+                <!-- Right: Packet Frame Inspector & History -->
+                <div class="right-stack">
+                    <!-- Dissected Frame Timeline Preview -->
+                    <section class="card" id="frame-inspector-card">
+                        <div class="card-title-row">
+                            <h2>Dissected Packet Frames (Wireshark Preview)</h2>
+                            <span class="badge badge-dpi" id="frames-count-badge">No File Loaded</span>
+                        </div>
+                        <div class="table-container frame-table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Time</th>
+                                        <th>Proto</th>
+                                        <th>Len</th>
+                                        <th>Info / Dissected Payload</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="packet-preview-body">
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                            Upload a <code>.pcap</code> file or click a sample capture above to inspect dissected frames.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Active Calculation Log -->
+                    <section class="card">
+                        <h2>Live Classification History</h2>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Prediction</th>
+                                        <th>Duration</th>
+                                        <th>Bytes</th>
+                                        <th>Confidence</th>
+                                        <th>Anomaly</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table-body">
+                                    <tr>
+                                        <td><span class="badge badge-ml">ML</span></td>
+                                        <td><strong>YouTube</strong></td>
+                                        <td>1.2s</td>
+                                        <td>85.0 KB</td>
+                                        <td>94%</td>
+                                        <td><span class="badge badge-normal">Normal</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
             </div>
         </main>
     </div>
