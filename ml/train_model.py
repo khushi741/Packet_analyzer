@@ -13,6 +13,14 @@ Usage:
 
 import os
 import sys
+
+# Configure UTF-8 stdout for Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import json
 import pandas as pd
 import numpy as np
@@ -246,7 +254,7 @@ def train_model():
 
     # Save full report
     report_path = os.path.join(EVAL_DIR, "classification_report.txt")
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(f"{'='*70}\n")
         f.write(f"  Classification Report — {best_name}\n")
         f.write(f"{'='*70}\n\n")
@@ -437,7 +445,7 @@ def train_model():
             ml_acc_no_sni = None
 
         # Save to report
-        with open(report_path, "a") as f:
+        with open(report_path, "a", encoding="utf-8") as f:
             f.write(f"\n{'─'*70}\n")
             f.write(f"  DPI BASELINE COMPARISON\n")
             f.write(f"{'─'*70}\n")
@@ -483,7 +491,7 @@ def train_model():
     summary = {k: v for k, v in summary.items() if v is not None}
 
     summary_path = os.path.join(EVAL_DIR, "evaluation_summary.json")
-    with open(summary_path, "w") as f:
+    with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
     print(f"\n  Saved: {summary_path}")
 

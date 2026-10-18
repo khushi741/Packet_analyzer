@@ -1,3 +1,13 @@
+---
+title: Packet Analyzer — Hybrid DPI + ML Traffic Classifier
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🛡️ Packet Analyzer — Hybrid DPI + ML Traffic Classifier
 
 ![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)
@@ -144,25 +154,37 @@ python ml/build_dataset.py     # Merge all data sources
 python ml/train_model.py       # Train + evaluate (outputs to ml/models/evaluation/)
 ```
 
-### 4. Start the ML Classification API
+### 4. Start the ML Engine & Web Dashboard
 
 ```bash
-uvicorn ml.realtime_inference:app --reload --port 8080
+# Starts the API + live interactive dashboard at http://localhost:8000
+python -m ml.realtime_inference
 ```
 
-### 5. Open the Dashboard
+### 5. Access Dashboards
 
-```bash
-# Option A: HTML/JS sandbox (open in browser)
-# Windows:
-ii dashboard/index.html
-# Or simply double-click dashboard/index.html in File Explorer
+- **Interactive Glassmorphism Dashboard:** Open [http://localhost:8000/](http://localhost:8000/) (served directly by FastAPI)
+- **Interactive API Docs (Swagger):** Open [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Streamlit Analytics Dashboard:**
+  ```bash
+  streamlit run dashboard/app.py
+  ```
 
-# Option B: Streamlit analytics dashboard
-streamlit run dashboard/app.py
-```
+### 6. Free Cloud Deployment (1-Click)
 
-### 6. Compile & Run C++ Engine (optional, requires CMake)
+#### Option A: Deploy on Render.com (100% Free)
+1. Push your repository to GitHub (`khushi741/Packet_analyzer`).
+2. Go to [Render.com](https://render.com) and click **New + > Blueprint** (or **New + > Web Service**).
+3. Connect your repository. Render will automatically detect `render.yaml` and deploy your app for free!
+4. Your dashboard will be live at `https://packet-analyzer.onrender.com/`.
+
+#### Option B: Deploy on Hugging Face Spaces (100% Free, Unlimited CPU)
+1. Go to [Hugging Face Spaces](https://huggingface.co/spaces) and click **Create new Space**.
+2. Name it `packet-analyzer`, select **Docker** as the Space SDK.
+3. Choose **Import from GitHub** and paste your repo URL (`https://github.com/khushi741/Packet_analyzer`).
+4. Hugging Face builds and deploys your Docker container instantly with free SSL!
+
+### 7. Compile & Run C++ Engine (optional, requires CMake)
 
 ```bash
 cmake -B build

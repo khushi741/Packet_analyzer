@@ -38,21 +38,30 @@ st.markdown("""
 st.title("🛡️ Hybrid DPI + Machine Learning Traffic Dashboard")
 st.write("Real-time network traffic analysis combining Deep Packet Inspection (DPI) and Machine Learning classification.")
 
+# Resolve default paths relative to script location
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+default_csv = os.path.join(BASE_DIR, "data", "flow_features.csv") if os.path.exists(os.path.join(BASE_DIR, "data", "flow_features.csv")) else "data/flow_features.csv"
+default_model = os.path.join(BASE_DIR, "ml", "models", "traffic_classifier.joblib") if os.path.exists(os.path.join(BASE_DIR, "ml", "models", "traffic_classifier.joblib")) else "ml/models/traffic_classifier.joblib"
+
 # Sidebar Controls
 st.sidebar.title("Configuration")
-csv_path = st.sidebar.text_input("Features CSV Path", "data/flow_features.csv")
-model_path = st.sidebar.text_input("Model Path", "ml/models/traffic_classifier.joblib")
+csv_path = st.sidebar.text_input("Features CSV Path", default_csv)
+model_path = st.sidebar.text_input("Model Path", default_model)
 
 @st.cache_resource
 def load_ml_model(path):
     if os.path.exists(path):
         return joblib.load(path)
+    # Fallback to base dir resolution
+    alt = os.path.join(BASE_DIR, path)
+    if os.path.exists(alt):
+        return joblib.load(alt)
     return None
 
 model = load_ml_model(model_path)
 
 # Load Data
-if not os.path.exists(csv_path):
+if not os.path.exists(csv_path) and not os.path.exists(os.path.join(BASE_DIR, csv_path)):
     st.info(f"Waiting for flow features CSV at `{csv_path}`. Showing synthetic display in the meantime.")
     # Generate dummy data for illustration
     np.random.seed(42)

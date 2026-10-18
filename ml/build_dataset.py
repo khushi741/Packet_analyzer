@@ -14,6 +14,15 @@ Usage:
 """
 
 import os
+import sys
+
+# Configure UTF-8 stdout for Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import pandas as pd
 import numpy as np
 
@@ -68,10 +77,10 @@ def build_dataset():
 
             dfs.append(df)
             source_counts[source_tag] = len(df)
-            print(f"  ✓ {description}")
+            print(f"  [+] {description}")
             print(f"    Path: {path}  |  Rows: {len(df)}")
         else:
-            print(f"  ✗ {description}")
+            print(f"  [-] {description}")
             print(f"    Path: {path}  |  NOT FOUND (skipped)")
 
     print()
@@ -118,7 +127,7 @@ def build_dataset():
     print("  Source breakdown:")
     for src, count in source_counts.items():
         pct = count / total * 100
-        bar = "█" * int(pct / 2)
+        bar = "=" * int(pct / 2)
         print(f"    {src:12s}: {count:6d} flows ({pct:5.1f}%) {bar}")
 
     print()
