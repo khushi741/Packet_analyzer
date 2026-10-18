@@ -3,10 +3,10 @@ import joblib
 import pandas as pd
 from typing import Optional, List, Any
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 # Base directory paths
@@ -172,7 +172,10 @@ def predict_flow(features: FlowFeaturesInput):
 
 
 @app.get("/health")
-def health():
+@app.get("/api/health")
+def health(request: Request):
+    if "text/html" in request.headers.get("accept", ""):
+        return HTMLResponse("<!DOCTYPE html><html><head><title>Health OK</title></head><body><h1>Service Healthy</h1><p>Status: Online</p></body></html>")
     return {
         "status": "healthy",
         "model_loaded": model is not None,
@@ -304,6 +307,7 @@ if os.path.exists(DASHBOARD_DIR):
     @app.get("/calculate")
     @app.get("/calculator")
     @app.get("/calculator.html")
+    @app.get("/predict-flow")
     def calculator_redirect():
         calc_path = os.path.join(DASHBOARD_DIR, "calculator.html")
         if os.path.exists(calc_path):
