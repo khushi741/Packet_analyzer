@@ -1,0 +1,15 @@
+# Pyrefly Language Server configuration for Antigravity IDE
+python-interpreter-path = ".venv/Scripts/python.exe"
+
+search-path = [
+    ".",
+    "ml"
+]
+
+site-package-path = [
+    ".venv/Lib/site-packages",
+    "C:/Users/khush/AppData/Local/Programs/Python/Python314/Lib/site-packages"
+]
+
+[errors]
+"unnecessary-type-conversion" = false

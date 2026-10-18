@@ -4,17 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🛡️ Hybrid DPI + ML Traffic Analyzer</title>
+    <meta name="description" content="Unified Network Traffic Analytics & Real-Time ML Flow Classification Sandbox.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Chart.js for premium interactive visualizations -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js for interactive visualizations (local with CDN fallback) -->
+    <script src="chart.min.js"></script>
+    <script>
+        if (typeof Chart === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>');
+        }
+    </script>
 </head>
 <body>
     <div class="glass-bg"></div>
     <div class="app-container">
-        <!-- Header -->
+        <!-- Header with View Switcher -->
         <header class="app-header">
             <div class="logo-section">
                 <span class="logo-icon">🛡️</span>
@@ -23,42 +29,147 @@
                     <p class="subtitle">Hybrid DPI + Machine Learning Engine</p>
                 </div>
             </div>
+
+            <!-- View Switcher -->
+            <nav class="nav-switcher" aria-label="Dashboard Navigation">
+                <button id="btn-tab-data" class="nav-pill active" onclick="switchView('data')" title="View Global Dataset Analytics">
+                    <span>📊</span>
+                    <span>Data Showcase</span>
+                </button>
+                <button id="btn-tab-calc" class="nav-pill" onclick="switchView('calc')" title="Run Real-Time Flow Inference">
+                    <span>🧮</span>
+                    <span>Flow Calculator</span>
+                </button>
+            </nav>
+
             <div class="api-status">
-                <span class="status-dot green"></span>
-                <span>ML Service: <strong>Online</strong></span>
+                <span class="status-dot green" id="status-dot"></span>
+                <span id="status-label">ML Service: <strong>Online</strong></span>
             </div>
         </header>
 
-        <!-- Main Dashboard Grid -->
-        <main class="dashboard-grid">
-            <!-- Left Side: Metrics and Live Testing -->
-            <section class="left-panel">
-                <!-- Metrics -->
-                <div class="card metrics-card">
-                    <h2>Live Stats Overview</h2>
-                    <div class="metrics-grid">
-                        <div class="metric-box">
-                            <span class="metric-val" id="stat-flows">1,243</span>
-                            <span class="metric-label">Total Flows</span>
-                        </div>
-                        <div class="metric-box">
-                            <span class="metric-val" id="stat-packets">12,540</span>
-                            <span class="metric-label">Total Packets</span>
-                        </div>
-                        <div class="metric-box">
-                            <span class="metric-val" id="stat-dpi">537</span>
-                            <span class="metric-label">DPI Identified</span>
-                        </div>
-                        <div class="metric-box">
-                            <span class="metric-val" id="stat-ml">661</span>
-                            <span class="metric-label">ML Classified</span>
-                        </div>
+        <!-- ============================================== -->
+        <!-- VIEW 1: DATA SHOWCASE (ANALYTICS & DATASET)    -->
+        <!-- ============================================== -->
+        <main id="view-data" class="view-container">
+            <div class="view-banner">
+                <div>
+                    <h2>📊 Global Traffic Analytics & Dataset Showcase</h2>
+                    <p>Aggregate flow features, protocol breakdown, and ML feature importances extracted from the network engine.</p>
+                </div>
+                <button class="preset-btn" onclick="fetchAnalyticsData()" title="Reload latest metrics from CSV">
+                    🔄 Refresh Dataset
+                </button>
+            </div>
+
+            <!-- 4 Hero Metrics Cards -->
+            <section class="metrics-grid-4">
+                <div class="metric-box">
+                    <span class="metric-val" id="stat-total-flows">...</span>
+                    <span class="metric-label">Total Flows Analyzed</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-val" id="stat-total-packets">...</span>
+                    <span class="metric-label">Packets Dissected</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-val" id="stat-total-volume">...</span>
+                    <span class="metric-label">Total Data Volume</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-val" id="stat-avg-duration">...</span>
+                    <span class="metric-label">Avg Flow Duration</span>
+                </div>
+            </section>
+
+            <!-- Chart Row 1: Distribution & DPI vs ML Split -->
+            <section class="two-chart-row">
+                <div class="card">
+                    <h2>Traffic Class Distribution</h2>
+                    <div class="chart-container">
+                        <canvas id="classChart"></canvas>
                     </div>
                 </div>
+                <div class="card">
+                    <h2>DPI vs ML Identification Split</h2>
+                    <div class="chart-container">
+                        <canvas id="dpiMlChart"></canvas>
+                    </div>
+                </div>
+            </section>
 
-                <!-- Interactive Flow Classifier -->
-                <div class="card interactive-card">
-                    <h2>Run Real-Time Inference</h2>
+            <!-- Chart Row 2: Throughput & Feature Importance -->
+            <section class="two-chart-row">
+                <div class="card">
+                    <h2>Flow Throughput Rate (Bytes / Sec)</h2>
+                    <div class="chart-container">
+                        <canvas id="throughputChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Random Forest Feature Importance</h2>
+                    <div class="chart-container">
+                        <canvas id="featureChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Captured Dataset Table -->
+            <section class="card">
+                <div class="table-header-tools">
+                    <h2>Captured Flow Features Dataset</h2>
+                    <input type="text" id="flow-search" class="search-input" placeholder="🔍 Filter by app, SNI, or method..." oninput="filterDatasetTable()">
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Classified App</th>
+                                <th>Duration</th>
+                                <th>Packets</th>
+                                <th>Volume</th>
+                                <th>SNI / Hostname</th>
+                                <th>DPI Flag</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataset-table-body">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-muted);">Loading dataset from server...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- ============================================== -->
+        <!-- VIEW 2: FLOW CALCULATOR & SANDBOX              -->
+        <!-- ============================================== -->
+        <main id="view-calc" class="view-container view-hidden">
+            <div class="view-banner">
+                <div>
+                    <h2>🧮 Real-Time Flow Inference Calculator</h2>
+                    <p>Simulate or test custom flow behavioral features against the trained Random Forest classifier and Anomaly detector.</p>
+                </div>
+            </div>
+
+            <div class="calculator-grid">
+                <!-- Left: Flow Input Form with Presets -->
+                <section class="card">
+                    <h2>Input Flow Parameters</h2>
+
+                    <!-- Presets -->
+                    <div class="preset-section">
+                        <span class="preset-title">Quick Scenario Presets:</span>
+                        <div class="preset-container">
+                            <button type="button" class="preset-btn" onclick="applyPreset('youtube')">🎬 YouTube 1080p</button>
+                            <button type="button" class="preset-btn" onclick="applyPreset('zoom')">📞 Zoom Conference</button>
+                            <button type="button" class="preset-btn" onclick="applyPreset('download')">📥 File Download</button>
+                            <button type="button" class="preset-btn" onclick="applyPreset('web')">🌐 Web Browsing</button>
+                        </div>
+                    </div>
+
                     <form id="inference-form">
                         <div class="form-row">
                             <div class="form-group">
@@ -70,94 +181,82 @@
                                 <input type="number" id="packets" value="42" required>
                             </div>
                         </div>
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="bytes">Total Bytes</label>
                                 <input type="number" id="bytes" value="87000" required>
                             </div>
                             <div class="form-group">
-                                <label for="mean-size">Mean Packet Size</label>
+                                <label for="mean-size">Mean Packet Size (Bytes)</label>
                                 <input type="number" id="mean-size" value="1280" required>
                             </div>
                         </div>
+
                         <div class="form-group">
                             <label for="iat">Mean Inter-Arrival Time (ms)</label>
                             <input type="number" id="iat" value="15" required>
                         </div>
-                        <button type="submit" class="btn-primary">Classify Traffic Flow</button>
+
+                        <button type="submit" class="btn-primary" id="btn-classify">Classify Traffic Flow</button>
                     </form>
-                    
-                    <!-- Result Modal-like Output inside Card -->
+
+                    <!-- Real-Time Output Box -->
                     <div id="prediction-result" class="result-box hidden">
-                        <h3>Classification Result</h3>
+                        <h3>Prediction Output</h3>
                         <div class="result-display">
                             <div class="app-badge" id="predicted-app">YouTube</div>
                             <div class="conf-bar-container">
-                                <div class="conf-bar" id="predicted-conf-bar" style="width: 94%;"></div>
-                                <span class="conf-text" id="predicted-conf-text">94% Confidence</span>
+                                <div class="conf-bar-bg">
+                                    <div class="conf-bar" id="predicted-conf-bar" style="width: 0%;"></div>
+                                </div>
+                                <span class="conf-text" id="predicted-conf-text">Calculating...</span>
                             </div>
+                            <span id="anomaly-badge" class="badge badge-normal">Normal Flow</span>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <!-- Right Side: Visual Analytics -->
-            <section class="right-panel">
-                <div class="card chart-card">
-                    <h2>Traffic Classification Split</h2>
-                    <div class="chart-container">
-                        <canvas id="trafficChart"></canvas>
-                    </div>
-                </div>
-                <div class="card list-card">
-                    <h2>Active Labeled Flow History</h2>
+                <!-- Right: Active Calculation Log -->
+                <section class="card">
+                    <h2>Live Classification History</h2>
                     <div class="table-container">
                         <table>
                             <thead>
                                 <tr>
                                     <th>Method</th>
-                                    <th>Application</th>
+                                    <th>Prediction</th>
                                     <th>Duration</th>
                                     <th>Bytes</th>
                                     <th>Confidence</th>
+                                    <th>Anomaly</th>
                                 </tr>
                             </thead>
                             <tbody id="history-table-body">
                                 <tr>
-                                    <td><span class="badge badge-dpi">DPI</span></td>
-                                    <td><strong>YouTube</strong></td>
-                                    <td>15.2s</td>
-                                    <td>1.2 MB</td>
-                                    <td>100%</td>
-                                </tr>
-                                <tr>
                                     <td><span class="badge badge-ml">ML</span></td>
-                                    <td><strong>Netflix</strong></td>
-                                    <td>24.8s</td>
-                                    <td>8.4 MB</td>
-                                    <td>94.2%</td>
+                                    <td><strong>YouTube</strong></td>
+                                    <td>1.2s</td>
+                                    <td>85.0 KB</td>
+                                    <td>94%</td>
+                                    <td><span class="badge badge-normal">Normal</span></td>
                                 </tr>
                                 <tr>
                                     <td><span class="badge badge-ml">ML</span></td>
                                     <td><strong>Zoom</strong></td>
                                     <td>45.0s</td>
                                     <td>3.1 MB</td>
-                                    <td>89.5%</td>
-                                </tr>
-                                <tr>
-                                    <td><span class="badge badge-dpi">DPI</span></td>
-                                    <td><strong>Google</strong></td>
-                                    <td>2.1s</td>
-                                    <td>240 KB</td>
-                                    <td>100%</td>
+                                    <td>89%</td>
+                                    <td><span class="badge badge-normal">Normal</span></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                </div>
-            </section>
+                </section>
+            </div>
         </main>
     </div>
+
     <script src="app.js"></script>
 </body>
 </html>
