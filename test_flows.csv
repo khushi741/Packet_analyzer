@@ -1,0 +1,7 @@
+flow_duration_ms,total_packets,total_bytes,forward_packets,backward_packets,forward_bytes,backward_bytes,mean_packet_size,std_packet_size,min_packet_size,max_packet_size,mean_inter_arrival_time_ms,std_inter_arrival_time_ms,packets_per_second,bytes_per_second,tcp_udp_flag,detected_sni,dpi_app_type,label
+35000.0,1450,1850000,290,1160,58000,1792000,1275.8,320.5,60,1500,24.1,8.5,41.4,52857.1,6,r4---sn-5hnekn76.googlevideo.com,YOUTUBE,youtube
+60000.0,2800,420000,1400,1400,210000,210000,150.0,45.2,50,400,21.4,4.2,46.6,7000.0,17,us04web.zoom.us,ZOOM,zoom
+15000.0,8500,12500000,850,7650,51000,12449000,1470.5,120.0,64,1500,1.76,0.85,566.6,833333.3,6,github-releases.githubusercontent.com,FILE_DOWNLOAD,file_download
+3200.0,38,28000,14,24,3500,24500,736.8,420.1,54,1460,84.2,35.6,11.8,8750.0,6,en.wikipedia.org,HTTPS,web_browsing
+45000.0,920,980000,184,736,25000,955000,1065.2,280.4,60,1460,48.9,15.2,20.4,21777.7,6,audio-fa.scdn.co,STREAMING,spotify
+12000.0,210,180000,70,140,15000,165000,857.1,385.0,54,1460,57.1,22.4,17.5,15000.0,6,instagram.c10r.facebook.com,SOCIAL_MEDIA,social_media

@@ -310,26 +310,59 @@ def dissect_csv_bytes(data: bytes, filename: str = "flows.csv") -> dict:
         raise ValueError("Uploaded CSV file is empty.")
     row = df.iloc[0].to_dict()
 
+    def _safe_float(val, default):
+        try:
+            return float(val) if not pd.isna(val) else default
+        except Exception:
+            return default
+
+    def _safe_int(val, default):
+        try:
+            return int(val) if not pd.isna(val) else default
+        except Exception:
+            return default
+
+    def _safe_str(val, default=""):
+        if pd.isna(val) or str(val).lower() == "nan":
+            return default
+        return str(val)
+
     flow_features = {
-        "flow_duration_ms": float(row.get("flow_duration_ms", 1200.0)),
-        "total_packets": int(row.get("total_packets", 42)),
-        "total_bytes": int(row.get("total_bytes", 87000)),
-        "forward_packets": int(row.get("forward_packets", 20)),
-        "backward_packets": int(row.get("backward_packets", 22)),
-        "forward_bytes": int(row.get("forward_bytes", 35000)),
-        "backward_bytes": int(row.get("backward_bytes", 52000)),
-        "mean_packet_size": float(row.get("mean_packet_size", 1280.0)),
-        "std_packet_size": float(row.get("std_packet_size", 300.0)),
-        "min_packet_size": int(row.get("min_packet_size", 60)),
-        "max_packet_size": int(row.get("max_packet_size", 1500)),
-        "mean_inter_arrival_time_ms": float(row.get("mean_inter_arrival_time_ms", 15.0)),
-        "std_inter_arrival_time_ms": float(row.get("std_inter_arrival_time_ms", 4.0)),
-        "packets_per_second": float(row.get("packets_per_second", 35.0)),
-        "bytes_per_second": float(row.get("bytes_per_second", 72500.0)),
-        "tcp_udp_flag": int(row.get("tcp_udp_flag", 6)),
-        "detected_sni": str(row.get("detected_sni", "")),
-        "dpi_app_type": str(row.get("dpi_app_type", "UNKNOWN")),
+        "flow_duration_ms": _safe_float(row.get("flow_duration_ms"), 1200.0),
+        "total_packets": _safe_int(row.get("total_packets"), 42),
+        "total_bytes": _safe_int(row.get("total_bytes"), 87000),
+        "forward_packets": _safe_int(row.get("forward_packets"), 20),
+        "backward_packets": _safe_int(row.get("backward_packets"), 22),
+        "forward_bytes": _safe_int(row.get("forward_bytes"), 35000),
+        "backward_bytes": _safe_int(row.get("backward_bytes"), 52000),
+        "mean_packet_size": _safe_float(row.get("mean_packet_size"), 1280.0),
+        "std_packet_size": _safe_float(row.get("std_packet_size"), 300.0),
+        "min_packet_size": _safe_int(row.get("min_packet_size"), 60),
+        "max_packet_size": _safe_int(row.get("max_packet_size"), 1500),
+        "mean_inter_arrival_time_ms": _safe_float(row.get("mean_inter_arrival_time_ms"), 15.0),
+        "std_inter_arrival_time_ms": _safe_float(row.get("std_inter_arrival_time_ms"), 4.0),
+        "packets_per_second": _safe_float(row.get("packets_per_second"), 35.0),
+        "bytes_per_second": _safe_float(row.get("bytes_per_second"), 72500.0),
+        "tcp_udp_flag": _safe_int(row.get("tcp_udp_flag"), 6),
+        "detected_sni": _safe_str(row.get("detected_sni"), ""),
+        "dpi_app_type": _safe_str(row.get("dpi_app_type"), "UNKNOWN"),
     }
+
+    # Generate preview for up to 15 flows from the CSV
+    packet_preview = []
+    for idx, (_, r) in enumerate(df.head(15).iterrows(), 1):
+        r_sni = _safe_str(r.get("detected_sni"), "")
+        r_label = _safe_str(r.get("label"), _safe_str(r.get("dpi_app_type"), "Flow"))
+        r_dur = _safe_float(r.get("flow_duration_ms"), 0.0) / 1000.0
+        r_pkts = _safe_int(r.get("total_packets"), 0)
+        r_bytes = _safe_int(r.get("total_bytes"), 0)
+        packet_preview.append({
+            "num": idx,
+            "time": f"+{r_dur:.2f}s",
+            "proto": "CSV Flow",
+            "len": r_bytes,
+            "info": f"Flow #{idx}: {r_pkts} pkts ({r_bytes} B) | SNI: {r_sni or 'N/A'} | Tag: {r_label}"
+        })
 
     return {
         "flow_features": flow_features,
@@ -339,9 +372,7 @@ def dissect_csv_bytes(data: bytes, filename: str = "flows.csv") -> dict:
         "detected_sni": flow_features["detected_sni"],
         "dpi_app_type": flow_features["dpi_app_type"],
         "protocol_name": "TCP" if flow_features["tcp_udp_flag"] == 6 else "UDP",
-        "packet_preview": [
-            {"num": 1, "time": "+0.000s", "proto": "CSV Flow", "len": flow_features["total_bytes"], "info": f"Imported Flow Record (SNI: {flow_features['detected_sni'] or 'N/A'})"}
-        ]
+        "packet_preview": packet_preview
     }
 
 
@@ -429,6 +460,7 @@ def get_sample_files():
     for s, desc in [
         ("test_dpi.pcap", "Real TLS Client Hello with SNI (YouTube, Instagram, Netflix, Spotify)"),
         ("output.pcap", "Live Captured Web & HTTP Network Traffic"),
+        ("test_flows.csv", "Curated Multi-Flow Network Records (YouTube, Zoom, Download, Web, Spotify, Instagram)"),
     ]:
         p = os.path.join(BASE_DIR, s)
         if os.path.exists(p):
